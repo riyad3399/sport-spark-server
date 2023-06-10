@@ -53,6 +53,7 @@ async function run() {
       .db("sportDB")
       .collection("selectClass");
     const usersCollection = client.db("sportDB").collection("users");
+    const paymentsCollection = client.db("sportDB").collection("payments");
 
     app.post("/jwt", (req, res) => {
       const user = req.body;
@@ -158,7 +159,27 @@ async function run() {
       res.send({
         clientSecret: paymentIntent.client_secret,
       });
-    });
+     });
+    
+     // payment related api
+    app.get('/payments',verifyJWT, async (req, res) => {
+      const result = await paymentsCollection.find().toArray();
+      res.send(result)
+    })
+    
+    
+     app.post("/payments", verifyJWT, async (req, res) => {
+       const payment = req.body;
+       console.log(payment);
+      const insertResult = await paymentsCollection.insertOne(payment);
+
+      const query = {
+        _id:{ $in: payment.classItemId.map((id) => new ObjectId(id)) },
+      };
+      const deleteResult = await selectClassCollection.deleteMany(query);
+      res.send({ insertResult, deleteResult });
+     });
+    
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
