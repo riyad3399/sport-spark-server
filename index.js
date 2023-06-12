@@ -181,6 +181,22 @@ async function run() {
       res.send(result)
     })
 
+    app.get('/instructor-classes/:email', async (req, res) => {
+      const email = req.params.email;
+      const query = { instructorEmail: email }
+  
+      const result = await classesCollection.find(query).toArray();
+      console.log(result);
+      res.send(result);
+    })
+
+    app.delete('/instructor-classes/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await classesCollection.deleteOne(query)
+      res.send(result);
+    })
+
     app.patch('/classes/:id', async (req, res) => {
       const id = req.params.id;
       const filter = {_id: new ObjectId(id)}
