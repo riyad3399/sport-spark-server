@@ -133,6 +133,11 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/usersdata/instructor", async (req, res) => {
+      const result = await usersCollection.find().toArray();
+      res.send(result);
+    });
+
     app.patch("/users/instructor/:id", async (req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
@@ -168,6 +173,26 @@ async function run() {
       const result = await classesCollection.find().toArray();
       res.send(result);
     });
+
+    app.get('/classes/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await classesCollection.find(query).toArray()
+      res.send(result)
+    })
+
+    app.patch('/classes/:id', async (req, res) => {
+      const id = req.params.id;
+      const filter = {_id: new ObjectId(id)}
+      const currentStatus = await classesCollection.findOne(filter)
+      const updateDoc = {
+        $set: {
+          status: currentStatus.status="accept"
+        },
+      };
+      const result = await classesCollection.updateOne(filter, updateDoc)
+      res.send(result)
+    })
 
     app.post("/classes", async (req, res) => {
       const classInfo = req.body;
@@ -214,23 +239,42 @@ async function run() {
       });
     });
 
+    // TODO: updated the enrolled 
+    app.patch('/payments/:id', async (req, res) => {
+      const id = req.params.id
+      const filter = { _id: new ObjectId(id) }
+      const currentDoc = await classesCollection.findOne(filter)
+      const updateDoc = {
+        $set: {
+          enrolled: currentDoc.enrolled + 1
+        },
+      };
+      const result = await classesCollection.updateOne(filter, updateDoc)
+      res.send(result);
+    }) 
+
     // payment related api
-    app.get("/payments", verifyJWT, async (req, res) => {
+    app.get("/payments", async (req, res) => {
       const result = await paymentsCollection.find().toArray();
       res.send(result);
     });
 
-    app.post("/payments", verifyJWT, async (req, res) => {
+    app.post("/payments/:id", async (req, res) => {
       const payment = req.body;
-      console.log(payment);
+      const id = req.params.id;
+  
       const insertResult = await paymentsCollection.insertOne(payment);
 
-      const query = {
-        _id: { $in: payment.classItemId.map((id) => new ObjectId(id)) },
-      };
-      const deleteResult = await selectClassCollection.deleteMany(query);
+      const query = { _id: new ObjectId(id) };
+      const deleteResult = await selectClassCollection.deleteOne(query);
       res.send({ insertResult, deleteResult });
     });
+
+    app.delete('/payments', async (req, res) => {
+      const history = req.body;
+      const result = await paymentsCollection.deleteMany(history)
+      res.send(result)
+    })
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
