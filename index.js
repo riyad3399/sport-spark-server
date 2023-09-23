@@ -3,6 +3,7 @@ const cors = require("cors");
 const app = express();
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
+const SSLCommerzPayment = require("sslcommerz-lts");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const stripe = require("stripe")(process.env.PAYMENT_SECRET_KEY);
 
@@ -54,6 +55,7 @@ async function run() {
       .collection("selectClass");
     const usersCollection = client.db("sportDB").collection("users");
     const paymentsCollection = client.db("sportDB").collection("payments");
+    const sslCmmezCollection = client.db("sportDB").collection("sslpayment");
 
     app.post("/jwt", (req, res) => {
       const user = req.body;
@@ -174,45 +176,44 @@ async function run() {
       res.send(result);
     });
 
-    app.get('/classes/:id', async (req, res) => {
+    app.get("/classes/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
-      const result = await classesCollection.find(query).toArray()
-      res.send(result)
-    })
+      const result = await classesCollection.find(query).toArray();
+      res.send(result);
+    });
 
-    app.get('/instructor-classes/:email', async (req, res) => {
+    app.get("/instructor-classes/:email", async (req, res) => {
       const email = req.params.email;
-      const query = { instructorEmail: email }
-  
+      const query = { instructorEmail: email };
+
       const result = await classesCollection.find(query).toArray();
       console.log(result);
       res.send(result);
-    })
+    });
 
-    app.delete('/instructor-classes/:id', async (req, res) => {
+    app.delete("/instructor-classes/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
-      const result = await classesCollection.deleteOne(query)
+      const result = await classesCollection.deleteOne(query);
       res.send(result);
-    })
+    });
 
-    app.patch('/classes/:id', async (req, res) => {
+    app.patch("/classes/:id", async (req, res) => {
       const id = req.params.id;
-      const filter = {_id: new ObjectId(id)}
-      const currentStatus = await classesCollection.findOne(filter)
+      const filter = { _id: new ObjectId(id) };
+      const currentStatus = await classesCollection.findOne(filter);
       const updateDoc = {
         $set: {
-          status: currentStatus.status="accept"
+          status: (currentStatus.status = "accept"),
         },
       };
-      const result = await classesCollection.updateOne(filter, updateDoc)
-      res.send(result)
-    })
+      const result = await classesCollection.updateOne(filter, updateDoc);
+      res.send(result);
+    });
 
     app.post("/classes", async (req, res) => {
       const classInfo = req.body;
-      console.log("classes", classInfo);
       const result = await classesCollection.insertOne(classInfo);
       res.send(result);
     });
@@ -255,19 +256,93 @@ async function run() {
       });
     });
 
-    // TODO: updated the enrolled 
-    app.patch('/payments/:id', async (req, res) => {
-      const id = req.params.id
-      const filter = { _id: new ObjectId(id) }
-      const currentDoc = await classesCollection.findOne(filter)
+    // TODO: updated the enrolled
+    app.patch("/payments/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const currentDoc = await classesCollection.findOne(filter);
       const updateDoc = {
         $set: {
-          enrolled: currentDoc.enrolled + 1
+          enrolled: currentDoc.enrolled + 1,
         },
       };
-      const result = await classesCollection.updateOne(filter, updateDoc)
+      const result = await classesCollection.updateOne(filter, updateDoc);
       res.send(result);
-    }) 
+    });
+
+    // sslcommerz paymetn
+
+    const store_id = process.env.STORE_ID;
+    const store_passwd = process.env.STORE_PASS;
+    const is_live = false; //true for live, false for sandbox
+
+    app.post("/classpayment", async (req, res) => {
+      const query = { _id: new ObjectId(req.body.classId) };
+      const classPayInfo = await selectClassCollection.findOne(query);
+      const classInfo = req.body;
+      const tran_id = new ObjectId().toString();
+      const data = {
+        total_amount: classInfo?.price,
+        currency: classInfo?.currency,
+        tran_id: tran_id, // use unique tran_id for each api call
+        success_url: `http://localhost:5000/payment/success/${tran_id}`,
+        fail_url: "http://localhost:3030/fail",
+        cancel_url: "http://localhost:3030/cancel",
+        ipn_url: "http://localhost:3030/ipn",
+        shipping_method: "Courier",
+        product_name: "Computer.",
+        product_category: "Electronic",
+        product_profile: "general",
+        cus_name: classInfo?.name,
+        cus_email: "customer@example.com",
+        cus_add1: classInfo?.address,
+        cus_add2: "Dhaka",
+        cus_city: "Dhaka",
+        cus_state: "Dhaka",
+        cus_postcode: "1000",
+        cus_country: "Bangladesh",
+        cus_phone: classInfo?.phone,
+        cus_fax: "01711111111",
+        ship_name: "Customer Name",
+        ship_add1: "Dhaka",
+        ship_add2: "Dhaka",
+        ship_city: "Dhaka",
+        ship_state: "Dhaka",
+        ship_postcode: 1000,
+        ship_country: "Bangladesh",
+      };
+      console.log(data);
+      const sslcz = new SSLCommerzPayment(store_id, store_passwd, is_live);
+      sslcz.init(data).then((apiResponse) => {
+        // Redirect the user to payment gateway
+        let GatewayPageURL = apiResponse.GatewayPageURL;
+        res.send({url: GatewayPageURL});
+        // console.log("Redirecting to: ", GatewayPageURL);
+
+        const finalSuccess = {
+          classInfo,
+          paidStatus: false,
+          transitionId: tran_id
+        }
+        const result =  sslCmmezCollection.insertOne(finalSuccess)
+
+      });
+
+      app.post('/payment/success/:tranId', async (req, res) => {
+
+        const result = await sslCmmezCollection.updateOne({ transitionId: req.params.tranId }, {
+          $set: {
+            paidStatus: true
+          }
+        })
+        if (result.modifiedCount > 0) {
+          res.redirect(`http://localhost:5173/payment/success/${req.params.tranId}`)
+        }
+      })
+
+
+
+    });
 
     // payment related api
     app.get("/payments", async (req, res) => {
@@ -278,7 +353,7 @@ async function run() {
     app.post("/payments/:id", async (req, res) => {
       const payment = req.body;
       const id = req.params.id;
-  
+
       const insertResult = await paymentsCollection.insertOne(payment);
 
       const query = { _id: new ObjectId(id) };
@@ -286,11 +361,11 @@ async function run() {
       res.send({ insertResult, deleteResult });
     });
 
-    app.delete('/payments', async (req, res) => {
+    app.delete("/payments", async (req, res) => {
       const history = req.body;
-      const result = await paymentsCollection.deleteMany(history)
-      res.send(result)
-    })
+      const result = await paymentsCollection.deleteMany(history);
+      res.send(result);
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
