@@ -56,6 +56,7 @@ async function run() {
     const usersCollection = client.db("sportDB").collection("users");
     const paymentsCollection = client.db("sportDB").collection("payments");
     const sslCmmezCollection = client.db("sportDB").collection("sslpayment");
+    const bookmarkCollection = client.db("sportDB").collection("bookmark");
 
     app.post("/jwt", (req, res) => {
       const user = req.body;
@@ -95,7 +96,7 @@ async function run() {
     };
 
     // users related api
-    app.get("/users", verifyJWT, verifyAdmin, async (req, res) => {
+    app.get("/users", async (req, res) => {
       const result = await usersCollection.find().toArray();
       res.send(result);
     });
@@ -123,7 +124,48 @@ async function run() {
       res.send(result);
     });
 
-    // instructor related api
+    /*------------------------ Bookmark api----------------------- */
+    app.get("/bookmark/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { userEmail: email };
+      const result = await bookmarkCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    app.post("/bookmark/:id", async (req, res) => {
+      const id = req.params.id;
+      const {
+        userEmail,
+        userName,
+        classId,
+        className,
+        classPhoto,
+        instructorEmail,
+        instructorName,
+        price,
+      } = req.body;
+      const bookmarkData = {
+        userEmail,
+        userName,
+        classId,
+        className,
+        classPhoto,
+        instructorEmail,
+        instructorName,
+        price,
+      };
+      const classIdFilter = { classId: id };
+      const userEmailFilter = { userEmail };
+      const filter = { $and: [classIdFilter, userEmailFilter] };
+      const existingUser = await bookmarkCollection.findOne(filter);
+      if (existingUser) {
+        return res.send({ message: "user already exists" });
+      }
+      const result = await bookmarkCollection.insertOne(bookmarkData);
+      res.send(result);
+    });
+
+    /*------------------------------- instructor related api ----------------------- */
     app.get("/users/instructor/:email", verifyJWT, async (req, res) => {
       const email = req.params.email;
       if (req.decoded.email !== email) {
@@ -170,7 +212,7 @@ async function run() {
       res.send(result);
     });
 
-    // classes related api
+    /*----------------------------- classes related api ----------------------- */
     app.get("/classes", async (req, res) => {
       const result = await classesCollection.find().toArray();
       res.send(result);
@@ -316,32 +358,32 @@ async function run() {
       sslcz.init(data).then((apiResponse) => {
         // Redirect the user to payment gateway
         let GatewayPageURL = apiResponse.GatewayPageURL;
-        res.send({url: GatewayPageURL});
+        res.send({ url: GatewayPageURL });
         // console.log("Redirecting to: ", GatewayPageURL);
 
         const finalSuccess = {
           classInfo,
           paidStatus: false,
-          transitionId: tran_id
-        }
-        const result =  sslCmmezCollection.insertOne(finalSuccess)
-
+          transitionId: tran_id,
+        };
+        const result = sslCmmezCollection.insertOne(finalSuccess);
       });
 
-      app.post('/payment/success/:tranId', async (req, res) => {
-
-        const result = await sslCmmezCollection.updateOne({ transitionId: req.params.tranId }, {
-          $set: {
-            paidStatus: true
+      app.post("/payment/success/:tranId", async (req, res) => {
+        const result = await sslCmmezCollection.updateOne(
+          { transitionId: req.params.tranId },
+          {
+            $set: {
+              paidStatus: true,
+            },
           }
-        })
+        );
         if (result.modifiedCount > 0) {
-          res.redirect(`http://localhost:5173/payment/success/${req.params.tranId}`)
+          res.redirect(
+            `http://localhost:5173/payment/success/${req.params.tranId}`
+          );
         }
-      })
-
-
-
+      });
     });
 
     // payment related api
