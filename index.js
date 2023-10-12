@@ -96,8 +96,14 @@ async function run() {
     };
 
     // users related api
-    app.get("/users", async (req, res) => {
+    app.get("/users",  async (req, res) => {
       const result = await usersCollection.find().toArray();
+      res.send(result);
+    });
+    app.get("/users/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = {email: email}
+      const result = await usersCollection.findOne(query)
       res.send(result);
     });
 
@@ -387,8 +393,10 @@ async function run() {
     });
 
     // payment related api
-    app.get("/payments", async (req, res) => {
-      const result = await paymentsCollection.find().toArray();
+    app.get("/payments/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = {email: email}
+      const result = await paymentsCollection.find(query).toArray();
       res.send(result);
     });
 
